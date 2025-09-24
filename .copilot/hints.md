@@ -1,0 +1,5 @@
+- Use schema/relations.yaml para JOINS canônicos (sem FK).
+- Métricas: docs/business_rules.md.
+- Rateio de meta: docs/rateio_meta.md (prefira o proporcional).
+- Coordenador/Supervisor: equipe.coordenador/supervisor → folha.cpf.
+- Consultas de referência em sql/queries/.

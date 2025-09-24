@@ -1,0 +1,14 @@
+```mermaid
+erDiagram
+  EQUIPE ||--o{ PROGRAMACAO : "equipe"
+  OBRA   ||--o{ PROGRAMACAO : "obra"
+  PROGRAMACAO ||--o{ PROGRAMACAO_SERVICO : "programacao? (fallback: data,equipe,obra)"
+  EQUIPE ||--o{ PROGRAMACAO_SERVICO : "equipe"
+  OBRA   ||--o{ PROGRAMACAO_SERVICO : "obra"
+  SERVICO||--o{ PROGRAMACAO_SERVICO : "servico"
+  EQUIPE ||--o{ EQUIPE_ESCALA : "equipe"
+  OBRA   ||--o{ FECHAMENTO : "obra"
+  OBRA   ||--o{ FECHAMENTO_MEDICAO : "obra"
+  OBRA   ||--o{ FATURAMENTO : "obra"
+  OBRA   ||--o{ VIABILIDADE : "obra"
+```

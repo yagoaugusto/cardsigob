@@ -1,0 +1,44 @@
+version: 2
+defaults:
+  active_team_filter: "equipe.status = 'ATIVO'"
+  programado_exclude_types: ["PROGRAMAÇÃO CANCELADA"]
+  executado_status: ["EXECUTADO"]
+facts:
+  programacao:
+    pk: id
+    fks: { equipe: equipe.id, obra: obra.id }
+    measures: { programado: "SUM(financeiro)" }
+    filters: { tipo_not_in: ["PROGRAMAÇÃO CANCELADA"] }
+  programacao_servico:
+    pk: id
+    fks: { equipe: equipe.id, obra: obra.id, servico: servico.id }
+    fallback_keys: { to_programacao: ["data","equipe","obra"] }
+    measures: { executado: "SUM(quantidade * valor)" }
+    filters: { status_in: ["EXECUTADO"] }
+  equipe_escala:
+    pk: id
+    fks: { equipe: equipe.id }
+    measures: { meta: "SUM(meta)" }
+  fechamento:
+    pk: id
+    fks: { obra: obra.id }
+  fechamento_medicao:
+    pk: id
+    fks: { obra: obra.id, usuario: usuario.id }
+    measures: { medido: "SUM(valor)" }
+  faturamento:
+    pk: id
+    fks: { obra: obra.id, user: usuario.id }
+    measures: { faturado: "SUM(valor)" }
+  viabilidade:
+    pk: id
+    fks: { obra: obra.id, viabilizador: usuario.id }
+entities:
+  equipe: { pk: id, fks: { atividade: atividade.id, processo: processo.id, filial: filial.id }, semantic_joins: { coordenador: folha.cpf, supervisor: folha.cpf } }
+  obra:   { pk: id, fks: { filial: filial.id } }
+  servico:{ pk: id, fields: [grupo], fks: { filial: filial.id } }
+  folha:  { pk: cpf, fields: [nome] }
+  atividade: { pk: id }
+  processo:  { pk: id }
+  filial:    { pk: id }
+  usuario:   { pk: id }

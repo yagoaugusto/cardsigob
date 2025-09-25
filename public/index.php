@@ -47,17 +47,19 @@ $user = auth_current_user();
       <p class="text-secondary mb-4">Escolha uma das ações rápidas abaixo para começar.</p>
     </div>
     <div class="col-lg-3 col-md-4 col-sm-6">
-      <div class="p-4 rounded-4 card-glass h-100 quick-card" onclick="alert('Em desenvolvimento: Carteira de obras Sintética');">
+      <div class="p-4 rounded-4 card-glass h-100 quick-card">
         <div class="icon-wrap icon-gradient-1"><i class="bi bi-collection"></i></div>
         <h5 class="fw-semibold mb-2">Carteira de obras Sintética</h5>
         <p class="text-secondary small mb-0">Visão resumida da carteira.</p>
+        <a class="stretched-link" href="/cardsigob/public/carteira_sintetica.php"></a>
       </div>
     </div>
     <div class="col-lg-3 col-md-4 col-sm-6">
-      <div class="p-4 rounded-4 card-glass h-100 quick-card" onclick="alert('Em desenvolvimento: Carteira de obras Programada');">
+      <div class="p-4 rounded-4 card-glass h-100 quick-card">
         <div class="icon-wrap icon-gradient-2"><i class="bi bi-calendar-check"></i></div>
         <h5 class="fw-semibold mb-2">Carteira de obras Programada</h5>
         <p class="text-secondary small mb-0">Obras com programação vigente.</p>
+        <a class="stretched-link" href="/cardsigob/public/carteira_programadas.php"></a>
       </div>
     </div>
     <div class="col-lg-3 col-md-4 col-sm-6">

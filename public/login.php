@@ -27,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <style>
     body { min-height: 100vh; display:flex; align-items:center; justify-content:center; background: radial-gradient(circle at 30% 30%, #1f2937, #0f172a); }
     .login-card { backdrop-filter: blur(12px); background: rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); }
-    .gradient-text { background: linear-gradient(90deg,#38bdf8,#818cf8,#c084fc); -webkit-background-clip: text; color:transparent; }
+  .gradient-text { background: linear-gradient(90deg,#38bdf8,#818cf8,#c084fc); -webkit-background-clip: text; background-clip: text; color:transparent; }
     .form-control, .form-control:focus { background: rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.2); color:#fff; }
     .btn-primary { background:linear-gradient(90deg,#2563eb,#7c3aed); border:none; }
     .btn-primary:hover { filter:brightness(1.1); }

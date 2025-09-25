@@ -20,8 +20,21 @@ function bindInClause(PDO $pdo, string $field, array $values, array &$params, st
 }
 function fetchAllAssoc(PDO $pdo, string $sql, array $params): array {
   $st = $pdo->prepare($sql);
-  $st->execute($params);
+  $st->execute(filterParams($params, $sql));
   return $st->fetchAll(PDO::FETCH_ASSOC);
+}
+function filterParams(array $params, string $sql): array {
+  if (!$params) return [];
+  if (!preg_match_all('/:([a-zA-Z0-9_]+)/', $sql, $m)) return [];
+  $need = array_unique($m[1]);
+  $out = [];
+  foreach ($need as $name) {
+    $key = ':' . $name;
+    if (array_key_exists($key, $params)) {
+      $out[$key] = $params[$key];
+    }
+  }
+  return $out;
 }
 function fetchPairs(PDO $pdo, string $sql): array { try { return $pdo->query($sql)->fetchAll(PDO::FETCH_NUM); } catch (Throwable $e) { return []; } }
 function money_br_compact($v) {
@@ -89,7 +102,7 @@ $paramsWhere = array_merge($paramsBase, $paramsPeriod);
 // Contagem total para paginação
 if (!$mustRequire) {
   $sqlCount = "SELECT COUNT(*) FROM obra o WHERE $whereSql";
-  $stC = $pdo->prepare($sqlCount); $stC->execute($paramsWhere); $total = (int)$stC->fetchColumn();
+  $stC = $pdo->prepare($sqlCount); $stC->execute(filterParams($paramsWhere, $sqlCount)); $total = (int)$stC->fetchColumn();
   $pages = max(1, (int)ceil($total / $per_page)); if ($page > $pages) $page = $pages; $offset = ($page-1)*$per_page;
 } else { $total = 0; $pages = 1; $page = 1; $offset = 0; }
 
@@ -113,7 +126,7 @@ if (!$mustRequire) {
   LEFT JOIN (
     SELECT obra, SUM(quantidade*valor) AS exec FROM programacao_servico WHERE status='EXECUTADO' GROUP BY obra
   ) s ON s.obra = o.id";
-  $stK = $pdo->prepare($sqlKpis); $stK->execute($paramsWhere); $k = $stK->fetch(PDO::FETCH_ASSOC) ?: [];
+  $stK = $pdo->prepare($sqlKpis); $stK->execute(filterParams($paramsWhere, $sqlKpis)); $k = $stK->fetch(PDO::FETCH_ASSOC) ?: [];
 } else { $k = []; }
 $kpi_quantidade = (int)($k['qtd'] ?? 0);
 $kpi_valor_servico = (float)($k['vlr_servico'] ?? 0);
@@ -123,41 +136,49 @@ $kpi_postes_orc = (float)($k['postes_orc'] ?? 0);
 
 // KPI extra: obras com programação de conclusão vs obras concluídas (no período)
 if (!$mustRequire && $progDateCol && $progConclusaoCol) {
-  // Obras com qualquer programação de conclusão (campo de conclusão preenchido) no período
-  // Usamos where sem período para evitar duplicar placeholders, e placeholders únicos por subconsulta
+  // Reescrito: cria um conjunto filtrado de obras (com período aplicado apenas uma vez)
+  // e computa os dois indicadores com EXISTS usando datas distintas.
   $sqlKPConc = "
     SELECT 
-      (SELECT COUNT(DISTINCT o.id)
-       FROM obra o
-       WHERE $whereSqlNoPeriod
-         AND EXISTS (
-           SELECT 1 FROM programacao p
-           WHERE p.obra = o.id
-             AND p.$progDateCol BETWEEN :kpi_dini1 AND :kpi_dfim1
-             AND p.tipo <> 'PROGRAMAÇÃO CANCELADA'
-             AND UPPER(COALESCE(p.$progConclusaoCol,'')) = 'S'
-         )
+      SUM(
+        EXISTS (
+          SELECT 1 FROM programacao p
+          WHERE p.obra = fo.id
+            AND p.$progDateCol BETWEEN :kpi_dini1 AND :kpi_dfim1
+            AND p.tipo <> 'PROGRAMAÇÃO CANCELADA'
+            AND UPPER(COALESCE(p.$progConclusaoCol,'')) = 'S'
+        )
       ) AS obras_com_prog_conclusao,
-      (SELECT COUNT(DISTINCT o.id)
-       FROM obra o
-       WHERE $whereSqlNoPeriod
-         AND EXISTS (
-           SELECT 1 FROM programacao p
-           WHERE p.obra = o.id
-             AND p.$progDateCol BETWEEN :kpi_dini2 AND :kpi_dfim2
-             AND p.tipo <> 'PROGRAMAÇÃO CANCELADA'
-             AND UPPER(COALESCE(p.$progConclusaoCol,'')) = 'S'
-             AND UPPER(COALESCE(o.situacao,'')) LIKE 'CONCLU%'
-         )
-      ) AS obras_concluidas";
+      SUM(
+        (EXISTS (
+          SELECT 1 FROM programacao p
+          WHERE p.obra = fo.id
+            AND p.$progDateCol BETWEEN :kpi_dini2 AND :kpi_dfim2
+            AND p.tipo <> 'PROGRAMAÇÃO CANCELADA'
+            AND UPPER(COALESCE(p.$progConclusaoCol,'')) = 'S'
+        )) AND (UPPER(COALESCE(fo.situacao,'')) LIKE 'CONCLU%')
+      ) AS obras_concluidas
+    FROM (
+      SELECT o.id, o.situacao
+      FROM obra o
+      WHERE $whereSqlNoPeriod
+        AND EXISTS (
+          SELECT 1 FROM programacao p0
+          WHERE p0.obra = o.id
+            AND p0.$progDateCol BETWEEN :kpi_bdini AND :kpi_bdfim
+            AND p0.tipo <> 'PROGRAMAÇÃO CANCELADA'
+        )
+    ) fo";
   $stKC = $pdo->prepare($sqlKPConc);
   $paramsKC = $paramsBase;
-  // Adicionar parâmetros específicos para as subconsultas de conclusão
+  // Datas para derivada (conjunto base) e para os dois cálculos
+  $paramsKC[':kpi_bdini'] = $data_ini; 
+  $paramsKC[':kpi_bdfim'] = $data_fim;
   $paramsKC[':kpi_dini1'] = $data_ini; 
   $paramsKC[':kpi_dfim1'] = $data_fim;
   $paramsKC[':kpi_dini2'] = $data_ini; 
   $paramsKC[':kpi_dfim2'] = $data_fim;
-  $stKC->execute($paramsKC);
+  $stKC->execute(filterParams($paramsKC, $sqlKPConc));
   $kc = $stKC->fetch(PDO::FETCH_ASSOC) ?: ['obras_com_prog_conclusao'=>0,'obras_concluidas'=>0];
   $kpi_obras_prog_conc = (int)$kc['obras_com_prog_conclusao'];
   $kpi_obras_concluidas = (int)$kc['obras_concluidas'];
@@ -326,7 +347,7 @@ if (!$mustRequire) {
   $stL = $pdo->prepare($sqlLista);
   $paramsList = $paramsWhere;
   if ($progDateCol && $progConclusaoCol) { $paramsList[':dini2'] = $data_ini; $paramsList[':dfim2'] = $data_fim; }
-  $stL->execute($paramsList); $obras = $stL->fetchAll();
+  $stL->execute(filterParams($paramsList, $sqlLista)); $obras = $stL->fetchAll();
 } else { $obras = []; }
 
 // Opções para filtros

@@ -133,7 +133,7 @@ if (!$mustRequire && $progDateCol && $progConclusaoCol) {
          AND EXISTS (
            SELECT 1 FROM programacao p
            WHERE p.obra = o.id
-             AND p.$progDateCol BETWEEN :dini2 AND :dfim2
+             AND p.$progDateCol BETWEEN :kpi_dini1 AND :kpi_dfim1
              AND p.tipo <> 'PROGRAMAÇÃO CANCELADA'
              AND UPPER(COALESCE(p.$progConclusaoCol,'')) = 'S'
          )
@@ -144,7 +144,7 @@ if (!$mustRequire && $progDateCol && $progConclusaoCol) {
          AND EXISTS (
            SELECT 1 FROM programacao p
            WHERE p.obra = o.id
-             AND p.$progDateCol BETWEEN :dini3 AND :dfim3
+             AND p.$progDateCol BETWEEN :kpi_dini2 AND :kpi_dfim2
              AND p.tipo <> 'PROGRAMAÇÃO CANCELADA'
              AND UPPER(COALESCE(p.$progConclusaoCol,'')) = 'S'
              AND UPPER(COALESCE(o.situacao,'')) LIKE 'CONCLU%'
@@ -152,9 +152,11 @@ if (!$mustRequire && $progDateCol && $progConclusaoCol) {
       ) AS obras_concluidas";
   $stKC = $pdo->prepare($sqlKPConc);
   $paramsKC = $paramsBase;
-  // Remover :dini/:dfim (não usados em $whereSqlNoPeriod) para evitar "parameter was not defined"
-  $paramsKC[':dini2'] = $data_ini; $paramsKC[':dfim2'] = $data_fim;
-  $paramsKC[':dini3'] = $data_ini; $paramsKC[':dfim3'] = $data_fim;
+  // Adicionar parâmetros específicos para as subconsultas de conclusão
+  $paramsKC[':kpi_dini1'] = $data_ini; 
+  $paramsKC[':kpi_dfim1'] = $data_fim;
+  $paramsKC[':kpi_dini2'] = $data_ini; 
+  $paramsKC[':kpi_dfim2'] = $data_fim;
   $stKC->execute($paramsKC);
   $kc = $stKC->fetch(PDO::FETCH_ASSOC) ?: ['obras_com_prog_conclusao'=>0,'obras_concluidas'=>0];
   $kpi_obras_prog_conc = (int)$kc['obras_com_prog_conclusao'];

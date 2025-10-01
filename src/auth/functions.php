@@ -1,6 +1,23 @@
 <?php
 require_once __DIR__ . '/../config.php';
 
+// Helpers de URL base dinâmicos (respeitam subpasta /public da app atual)
+if (!function_exists('igob_public_base')) {
+    function igob_public_base(): string {
+        $script = $_SERVER['SCRIPT_NAME'] ?? '/';
+        if (preg_match('~^(.*?/public)(?:/.*)?$~', $script, $m)) {
+            return rtrim($m[1], '/');
+        }
+        // Fallback: diretório do script
+        return rtrim(dirname($script), '/');
+    }
+}
+if (!function_exists('igob_url')) {
+    function igob_url(string $path): string {
+        return igob_public_base() . '/' . ltrim($path, '/');
+    }
+}
+
 // Assumindo agora a estrutura real com colunas: id, email, senha (texto plano), nome(opcional), ativo(opcional)
 // IMPORTANTE: senha em texto plano não é recomendada em produção. Migrar futuramente para password_hash.
 
@@ -95,13 +112,14 @@ function auth_login(string $emailInput, string $senhaInput): bool {
 
 function auth_require_login(): void {
     if (empty($_SESSION['user_id'])) {
-        header('Location: /cardsigob/public/login.php');
+        $returnTo = $_SERVER['REQUEST_URI'] ?? igob_url('index.php');
+        header('Location: ' . igob_url('login.php') . '?redirect=' . urlencode($returnTo));
         exit;
     }
     // Timeout de inatividade (30 min)
     if (!empty($_SESSION['last_activity']) && time() - $_SESSION['last_activity'] > 1800) {
         auth_logout();
-        header('Location: /cardsigob/public/login.php?timeout=1');
+        header('Location: ' . igob_url('login.php') . '?timeout=1');
         exit;
     }
     $_SESSION['last_activity'] = time();

@@ -2,6 +2,10 @@
 require_once __DIR__ . '/../src/auth/functions.php';
 auth_require_login();
 $user = auth_current_user();
+// Helper simples de escape HTML (evita erro se não houver definição global)
+if (!function_exists('h')) {
+  function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+}
 ?>
 <!doctype html>
 <html lang="pt-br" data-bs-theme="dark">
@@ -37,7 +41,7 @@ $user = auth_current_user();
   <a class="navbar-brand fw-semibold gradient-text" href="#">IGOB</a>
   <div class="ms-auto d-flex align-items-center gap-3">
   <span class="small text-white-50">Olá, <?= htmlspecialchars($user['nome'] ?: ($user['email'] ?? 'Usuário')) ?></span>
-    <a href="/cardsigob/public/logout.php" class="btn btn-sm btn-outline-light rounded-pill">Sair</a>
+    <a href="<?= h(igob_url('logout.php')) ?>" class="btn btn-sm btn-outline-light rounded-pill">Sair</a>
   </div>
 </nav>
 <section class="container-xxl py-5">
@@ -51,7 +55,7 @@ $user = auth_current_user();
         <div class="icon-wrap icon-gradient-1"><i class="bi bi-collection"></i></div>
         <h5 class="fw-semibold mb-2">Carteira de obras Sintética</h5>
         <p class="text-secondary small mb-0">Visão resumida da carteira.</p>
-        <a class="stretched-link" href="/cardsigob/public/carteira_sintetica.php"></a>
+  <a class="stretched-link" href="<?= h(igob_url('carteira_sintetica.php')) ?>"></a>
       </div>
     </div>
     <div class="col-lg-3 col-md-4 col-sm-6">
@@ -59,7 +63,7 @@ $user = auth_current_user();
         <div class="icon-wrap icon-gradient-2"><i class="bi bi-calendar-check"></i></div>
         <h5 class="fw-semibold mb-2">Carteira de obras Programada</h5>
         <p class="text-secondary small mb-0">Obras com programação vigente.</p>
-        <a class="stretched-link" href="/cardsigob/public/carteira_programadas.php"></a>
+  <a class="stretched-link" href="<?= h(igob_url('carteira_programadas.php')) ?>"></a>
       </div>
     </div>
     <div class="col-lg-3 col-md-4 col-sm-6">
@@ -77,10 +81,11 @@ $user = auth_current_user();
       </div>
     </div>
     <div class="col-lg-3 col-md-4 col-sm-6">
-      <div class="p-4 rounded-4 card-glass h-100 quick-card" onclick="alert('Em desenvolvimento: Meta x Programado x Executado');">
+      <div class="p-4 rounded-4 card-glass h-100 quick-card">
         <div class="icon-wrap icon-gradient-5"><i class="bi bi-bar-chart-line"></i></div>
         <h5 class="fw-semibold mb-2">Meta x Programado x Executado</h5>
         <p class="text-secondary small mb-0">Acompanhamento comparativo.</p>
+  <a class="stretched-link" href="<?= h(igob_url('meta_programado_executado.php')) ?>"></a>
       </div>
     </div>
     <div class="col-lg-3 col-md-4 col-sm-6">

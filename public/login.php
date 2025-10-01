@@ -8,10 +8,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if ($login === '' || $senha === '') {
     $erro = 'Informe e-mail e senha.';
     } else {
-        if (auth_login($login, $senha)) {
-            header('Location: /cardsigob/public/index.php');
-            exit;
-        } else {
+    if (auth_login($login, $senha)) {
+      $dest = isset($_GET['redirect']) && $_GET['redirect'] !== '' ? $_GET['redirect'] : igob_url('index.php');
+      header('Location: ' . $dest);
+      exit;
+    } else {
             $erro = 'Credenciais inválidas.';
         }
     }

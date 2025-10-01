@@ -4,6 +4,9 @@ auth_require_login();
 
 global $pdo;
 
+// Usuário atual (para restringir filiais por vínculo)
+$__user = function_exists('auth_current_user') ? auth_current_user() : null;
+
 // Helper: sanitize array from GET for IN clause
 function bindInClause(PDO $pdo, string $field, array $values, array &$params, string $prefix) {
     $keys = [];
@@ -27,10 +30,36 @@ $data_ini = isset($_GET['data_ini']) && $_GET['data_ini'] !== '' ? $_GET['data_i
 $data_fim = isset($_GET['data_fim']) && $_GET['data_fim'] !== '' ? $_GET['data_fim'] : null;
 // Busca textual
 $search = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
+// Restringir filiais às vinculadas ao usuário (usuario_filial)
+try {
+  $uid = (int)($__user['id'] ?? 0);
+} catch (Throwable $e) { $uid = 0; }
+try {
+  $ufUserCol = null; $ufFilialCol = null; $allowedIds = [];
+  $db = $pdo->query('SELECT DATABASE()')->fetchColumn();
+  if ($db) {
+    $ufUserCol = (function() use ($pdo){
+      try { $st=$pdo->prepare("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME='usuario_filial' AND COLUMN_NAME IN ('usuario','id_usuario','usuario_id','user','user_id') LIMIT 1"); $st->execute(); return $st->fetchColumn() ?: null; } catch (Throwable $e){ return null; }
+    })();
+    $ufFilialCol = (function() use ($pdo){
+      try { $st=$pdo->prepare("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME='usuario_filial' AND COLUMN_NAME IN ('filial','id_filial','filial_id','cd_filial') LIMIT 1"); $st->execute(); return $st->fetchColumn() ?: null; } catch (Throwable $e){ return null; }
+    })();
+  }
+  if ($uid && $ufUserCol && $ufFilialCol) {
+    $st = $pdo->prepare("SELECT DISTINCT f.id FROM filial f JOIN usuario_filial uf ON uf.$ufFilialCol = f.id WHERE uf.$ufUserCol = :uid");
+    $st->execute([':uid'=>$uid]);
+    $allowedIds = array_map('intval', array_column($st->fetchAll(PDO::FETCH_NUM), 0));
+  } else {
+    $st = $pdo->query('SELECT id FROM filial');
+    $allowedIds = array_map('intval', array_column($st->fetchAll(PDO::FETCH_NUM), 0));
+  }
+  if ($filiaisSel) { $filiaisSel = array_values(array_intersect(array_map('intval',$filiaisSel), $allowedIds)); }
+} catch (Throwable $e) { /* silencioso */ }
+
 // Paginação
 $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
 $per_page = 100; // tamanho da página padrão
-// Regra: exigir ao menos uma filial selecionada
+// Regra: exigir ao menos uma filial selecionada (após interseção)
 $mustSelectFilial = count($filiaisSel) === 0;
 
 // Base WHERE
@@ -297,10 +326,20 @@ if (!$mustSelectFilial) {
 // (KPIs e agrupamentos agora são calculados por SQL para todo o conjunto filtrado)
 
 // Opções de filtro (lists)
-function fetchPairs(PDO $pdo, string $sql): array {
-    try { return $pdo->query($sql)->fetchAll(PDO::FETCH_NUM); } catch (Throwable $e) { return []; }
+function fetchPairs(PDO $pdo, string $sql, array $params = []): array {
+    try {
+        if ($params && preg_match('/:([a-zA-Z0-9_]+)/', $sql)) { $st=$pdo->prepare($sql); $st->execute($params); return $st->fetchAll(PDO::FETCH_NUM); }
+        return $pdo->query($sql)->fetchAll(PDO::FETCH_NUM);
+    } catch (Throwable $e) { return []; }
 }
-$filiais = fetchPairs($pdo, 'SELECT id, titulo FROM filial ORDER BY titulo');
+// Lista de filiais para o select, já limitada por usuario_filial
+try {
+  if ($uid && isset($ufUserCol,$ufFilialCol) && $ufUserCol && $ufFilialCol) {
+    $filiais = fetchPairs($pdo, "SELECT DISTINCT f.id, f.titulo FROM filial f JOIN usuario_filial uf ON uf.$ufFilialCol = f.id WHERE uf.$ufUserCol = :uid ORDER BY f.titulo", [':uid'=>$uid]);
+  } else {
+    $filiais = fetchPairs($pdo, 'SELECT id, titulo FROM filial ORDER BY titulo');
+  }
+} catch (Throwable $e) { $filiais = fetchPairs($pdo, 'SELECT id, titulo FROM filial ORDER BY titulo'); }
 $tipos_opts = fetchPairs($pdo, 'SELECT DISTINCT tipo, tipo FROM obra WHERE tipo IS NOT NULL AND tipo <> "" ORDER BY tipo');
 $situacoes_opts = fetchPairs($pdo, 'SELECT DISTINCT situacao, situacao FROM obra WHERE situacao IS NOT NULL AND situacao <> "" ORDER BY situacao');
 $responsaveis = fetchPairs($pdo, 'SELECT DISTINCT u.id, u.nome FROM obra o LEFT JOIN usuario u ON u.id = o.responsavel WHERE u.id IS NOT NULL ORDER BY u.nome');
@@ -338,6 +377,7 @@ function build_query(array $overrides = []) {
   <title>Carteira de Obras Sintética - IGOB</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     body { min-height:100vh; background: radial-gradient(circle at 10% 20%, #121827, #0b1220); }
     .nav-glass { backdrop-filter: blur(14px); background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); }
@@ -358,9 +398,9 @@ function build_query(array $overrides = []) {
 </head>
 <body class="text-light">
   <nav class="navbar navbar-expand-lg nav-glass px-3 my-2 rounded-4 container-xxl">
-    <a class="navbar-brand fw-semibold" href="/cardsigob/public/index.php">IGOB</a>
+  <a class="navbar-brand fw-semibold" href="<?= h(igob_url('index.php')) ?>">IGOB</a>
     <div class="ms-auto d-flex align-items-center gap-2">
-      <a href="/cardsigob/public/logout.php" class="btn btn-sm btn-outline-light rounded-pill">Sair</a>
+  <a href="<?= h(igob_url('logout.php')) ?>" class="btn btn-sm btn-outline-light rounded-pill">Sair</a>
     </div>
   </nav>
 
@@ -518,6 +558,80 @@ function build_query(array $overrides = []) {
       </div>
     </div>
 
+    <?php
+    // Preparação dos dados para os gráficos (somente quando houver filial selecionada)
+    $chartRespTipo = null; $chartRespFaixa = null;
+    if (!$mustSelectFilial) {
+      // Responsável x Tipo (obras)
+      $respSet = [];
+      $tipoSet = [];
+      foreach ($rowsRespTipo as $r) {
+        $respSet[$r['responsavel']] = true;
+        $tipoSet[$r['tipo']] = true;
+      }
+      $respLabels = array_keys($respSet);
+      sort($respLabels, SORT_NATURAL|SORT_FLAG_CASE);
+      $tipoLabels = array_keys($tipoSet);
+      sort($tipoLabels, SORT_NATURAL|SORT_FLAG_CASE);
+      // matriz valores
+      $mat = [];
+      foreach ($respLabels as $resp) { $mat[$resp] = array_fill_keys($tipoLabels, 0); }
+      foreach ($rowsRespTipo as $r) { $mat[$r['responsavel']][$r['tipo']] = (int)$r['qtd']; }
+      // paleta de cores
+      $palette = ['#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f','#edc949','#af7aa1','#ff9da7','#9c755f','#bab0ab'];
+      $datasets = [];
+      $ci = 0; $pc = count($palette);
+      foreach ($tipoLabels as $tipo) {
+        $data = [];
+        foreach ($respLabels as $resp) { $data[] = (int)$mat[$resp][$tipo]; }
+        $color = $palette[$ci % $pc]; $ci++;
+        $datasets[] = [ 'label' => $tipo, 'data' => $data, 'backgroundColor' => $color ];
+      }
+      $chartRespTipo = [ 'labels' => $respLabels, 'datasets' => $datasets ];
+
+      // Responsável x Faixa (obras)
+      $faixaOrder = ['Até 10 mil','Até 40 mil','Até 100 mil','Acima de 100 mil'];
+      $respSet2 = [];
+      $faixaSet = [];
+      foreach ($rowsRespFaixa as $r) { $respSet2[$r['responsavel']] = true; $faixaSet[$r['faixa']] = true; }
+      $respLabels2 = array_keys($respSet2);
+      sort($respLabels2, SORT_NATURAL|SORT_FLAG_CASE);
+      // ordenar faixas conforme ordem alvo, mantendo apenas as existentes
+      $faixaLabels = array_values(array_intersect($faixaOrder, array_keys($faixaSet)));
+      // matriz valores
+      $mat2 = [];
+      foreach ($respLabels2 as $resp) { $mat2[$resp] = array_fill_keys($faixaLabels, 0); }
+      foreach ($rowsRespFaixa as $r) { if (in_array($r['faixa'], $faixaLabels, true)) $mat2[$r['responsavel']][$r['faixa']] = (int)$r['qtd']; }
+      // paleta específica para faixas
+      $palette2 = ['#86b6f6','#7bd389','#ffd166','#ef476f'];
+      $datasets2 = [];
+      foreach ($faixaLabels as $i=>$faixa) {
+        $data = [];
+        foreach ($respLabels2 as $resp) { $data[] = (int)$mat2[$resp][$faixa]; }
+        $color = $palette2[$i % count($palette2)];
+        $datasets2[] = [ 'label' => $faixa, 'data' => $data, 'backgroundColor' => $color ];
+      }
+      $chartRespFaixa = [ 'labels' => $respLabels2, 'datasets' => $datasets2 ];
+    }
+    ?>
+
+    <?php if (!$mustSelectFilial): ?>
+    <!-- Gráficos: Responsável x Tipo e Responsável x Faixa -->
+    <div class="card card-glass p-3 mb-4">
+      <h6 class="mb-3">Responsável x Tipo (obras)</h6>
+      <div class="position-relative" style="height: clamp(260px, 38vh, 440px);">
+        <canvas id="chartRespTipo"></canvas>
+      </div>
+    </div>
+
+    <div class="card card-glass p-3 mb-4">
+      <h6 class="mb-3">Responsável x Faixa de Valor de Serviço (obras)</h6>
+      <div class="position-relative" style="height: clamp(260px, 38vh, 440px);">
+        <canvas id="chartRespFaixa"></canvas>
+      </div>
+    </div>
+    <?php endif; ?>
+
   <!-- Agrupamentos -->
     <div class="row g-3 mb-4">
       <div class="col-lg-6">
@@ -598,43 +712,7 @@ function build_query(array $overrides = []) {
       </div>
     </div>
 
-    <!-- Análises por Responsável -->
-      <div class="row g-3 mb-4">
-        <div class="col-lg-6">
-          <div class="card card-glass p-3 h-100">
-            <h6 class="mb-3">Responsável x Tipo (obras)</h6>
-            <table class="table table-sm align-middle text-white-50">
-              <thead><tr><th>Responsável</th><th>Tipo</th><th class="text-end">Obras</th></tr></thead>
-              <tbody>
-                <?php foreach ($rowsRespTipo as $r): ?>
-                  <tr>
-                    <td><?= h($r['responsavel']) ?></td>
-                    <td><?= h($r['tipo']) ?></td>
-                    <td class="text-end"><?= number_format((int)$r['qtd'],0,',','.') ?></td>
-                  </tr>
-                <?php endforeach; ?>
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div class="col-lg-6">
-          <div class="card card-glass p-3 h-100">
-            <h6 class="mb-3">Responsável x Faixa de Valor de Serviço (obras)</h6>
-            <table class="table table-sm align-middle text-white-50">
-              <thead><tr><th>Responsável</th><th>Faixa</th><th class="text-end">Obras</th></tr></thead>
-              <tbody>
-                <?php foreach ($rowsRespFaixa as $r): ?>
-                  <tr>
-                    <td><?= h($r['responsavel']) ?></td>
-                    <td><?= h($r['faixa']) ?></td>
-                    <td class="text-end"><?= number_format((int)$r['qtd'],0,',','.') ?></td>
-                  </tr>
-                <?php endforeach; ?>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+    <!-- Análises por Responsável: substituídas por gráficos acima -->
 
     <!-- Lista de obras -->
   <div class="card card-glass p-3 mb-5">
@@ -765,6 +843,51 @@ function build_query(array $overrides = []) {
       input.addEventListener('input', apply);
       // aplica quando a página carrega com q preenchido
       apply();
+    })();
+
+    // Charts
+    (function(){
+      <?php if (!$mustSelectFilial): ?>
+      try {
+        const dataRespTipo = <?= json_encode($chartRespTipo, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) ?>;
+        const ctx1 = document.getElementById('chartRespTipo').getContext('2d');
+        new Chart(ctx1, {
+          type: 'bar',
+          data: dataRespTipo,
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'top', labels: { color: '#cbd5e1' } },
+              tooltip: { mode: 'index', intersect: false }
+            },
+            scales: {
+              x: { stacked: false, ticks: { color: '#aab4cf' }, grid: { color: 'rgba(255,255,255,0.06)' } },
+              y: { stacked: false, ticks: { color: '#aab4cf' }, grid: { color: 'rgba(255,255,255,0.06)' }, beginAtZero: true }
+            }
+          }
+        });
+
+        const dataRespFaixa = <?= json_encode($chartRespFaixa, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) ?>;
+        const ctx2 = document.getElementById('chartRespFaixa').getContext('2d');
+        new Chart(ctx2, {
+          type: 'bar',
+          data: dataRespFaixa,
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'top', labels: { color: '#cbd5e1' } },
+              tooltip: { mode: 'index', intersect: false }
+            },
+            scales: {
+              x: { stacked: false, ticks: { color: '#aab4cf' }, grid: { color: 'rgba(255,255,255,0.06)' } },
+              y: { stacked: false, ticks: { color: '#aab4cf' }, grid: { color: 'rgba(255,255,255,0.06)' }, beginAtZero: true }
+            }
+          }
+        });
+      } catch (e) { console.error('Erro ao iniciar gráficos:', e); }
+      <?php endif; ?>
     })();
   </script>
 </body>

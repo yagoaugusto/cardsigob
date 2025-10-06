@@ -682,7 +682,8 @@ $responsaveis = fetchPairs($pdo, 'SELECT DISTINCT u.id, u.nome FROM obra o LEFT 
     </div>
     <?php endif; ?>
 
-    <!-- Agrupamentos -->
+    <!-- Agrupamentos e Conclusão: ordem solicitada -->
+    <!-- Linha 1: Por Tipo / Conclusão no período por Tipo -->
     <div class="row g-3 mb-4">
       <div class="col-lg-6">
         <div class="card card-glass p-3 h-100">
@@ -691,6 +692,88 @@ $responsaveis = fetchPairs($pdo, 'SELECT DISTINCT u.id, u.nome FROM obra o LEFT 
             <thead><tr><th>Tipo</th><th class="text-end">Obras</th><th class="text-end">Vlr. Serviço</th><th class="text-end">Programado</th><th class="text-end">Executado</th></tr></thead>
             <tbody>
               <?php foreach ($grp_tipo as $k=>$v): ?>
+                <tr>
+                  <td><?= h($k) ?></td>
+                  <td class="text-end"><?= number_format($v['quantidade'],0,',','.') ?></td>
+                  <td class="text-end"><?= money_br_compact($v['valor_servico']) ?></td>
+                  <td class="text-end"><?= money_br_compact($v['valor_programado']) ?></td>
+                  <td class="text-end"><?= money_br_compact($v['valor_executado']) ?></td>
+                </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="card card-glass p-3 h-100">
+          <h6 class="mb-3">Conclusão no período por Tipo</h6>
+          <table class="table table-sm align-middle text-white-50">
+            <thead><tr><th>Tipo</th><th class="text-end">Obras</th><th class="text-end">c/ prog. conclusão</th><th class="text-end">Concluídas</th></tr></thead>
+            <tbody>
+              <?php foreach ($conc_tipo as $r): ?>
+                <tr>
+                  <td><?= h($r['grp']) ?></td>
+                  <td class="text-end"><?= number_format((int)$r['obras'],0,',','.') ?></td>
+                  <td class="text-end"><?= number_format((int)$r['com_prog_conc'],0,',','.') ?></td>
+                  <td class="text-end"><?= number_format((int)$r['concluidas'],0,',','.') ?></td>
+                </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Linha 2: Por Responsável / Conclusão no período por Responsável -->
+    <div class="row g-3 mb-4">
+      <div class="col-lg-6">
+        <div class="card card-glass p-3 h-100">
+          <h6 class="mb-3">Por Responsável</h6>
+          <table class="table table-sm align-middle text-white-50">
+            <thead><tr><th>Responsável</th><th class="text-end">Obras</th><th class="text-end">Vlr. Serviço</th><th class="text-end">Programado</th><th class="text-end">Executado</th></tr></thead>
+            <tbody>
+              <?php foreach ($grp_resp as $k=>$v): ?>
+                <tr>
+                  <td><?= h($k) ?></td>
+                  <td class="text-end"><?= number_format($v['quantidade'],0,',','.') ?></td>
+                  <td class="text-end"><?= money_br_compact($v['valor_servico']) ?></td>
+                  <td class="text-end"><?= money_br_compact($v['valor_programado']) ?></td>
+                  <td class="text-end"><?= money_br_compact($v['valor_executado']) ?></td>
+                </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="card card-glass p-3 h-100">
+          <h6 class="mb-3">Conclusão no período por Responsável</h6>
+          <table class="table table-sm align-middle text-white-50">
+            <thead><tr><th>Responsável</th><th class="text-end">Obras</th><th class="text-end">c/ prog. conclusão</th><th class="text-end">Concluídas</th></tr></thead>
+            <tbody>
+              <?php foreach ($conc_resp as $r): ?>
+                <tr>
+                  <td><?= h($r['grp']) ?></td>
+                  <td class="text-end"><?= number_format((int)$r['obras'],0,',','.') ?></td>
+                  <td class="text-end"><?= number_format((int)$r['com_prog_conc'],0,',','.') ?></td>
+                  <td class="text-end"><?= number_format((int)$r['concluidas'],0,',','.') ?></td>
+                </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Linha 3: Por Situação / Por Faixa de Valor de Serviço -->
+    <div class="row g-3 mb-4">
+      <div class="col-lg-6">
+        <div class="card card-glass p-3 h-100">
+          <h6 class="mb-3">Por Situação</h6>
+          <table class="table table-sm align-middle text-white-50">
+            <thead><tr><th>Situação</th><th class="text-end">Obras</th><th class="text-end">Vlr. Serviço</th><th class="text-end">Programado</th><th class="text-end">Executado</th></tr></thead>
+            <tbody>
+              <?php foreach ($grp_sit as $k=>$v): ?>
                 <tr>
                   <td><?= h($k) ?></td>
                   <td class="text-end"><?= number_format($v['quantidade'],0,',','.') ?></td>
@@ -716,86 +799,6 @@ $responsaveis = fetchPairs($pdo, 'SELECT DISTINCT u.id, u.nome FROM obra o LEFT 
                   <td class="text-end"><?= money_br_compact($v['valor_servico']) ?></td>
                   <td class="text-end"><?= money_br_compact($v['valor_programado']) ?></td>
                   <td class="text-end"><?= money_br_compact($v['valor_executado']) ?></td>
-                </tr>
-              <?php endforeach; ?>
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <div class="col-lg-6">
-        <div class="card card-glass p-3 h-100">
-          <h6 class="mb-3">Por Situação</h6>
-          <table class="table table-sm align-middle text-white-50">
-            <thead><tr><th>Situação</th><th class="text-end">Obras</th><th class="text-end">Vlr. Serviço</th><th class="text-end">Programado</th><th class="text-end">Executado</th></tr></thead>
-            <tbody>
-              <?php foreach ($grp_sit as $k=>$v): ?>
-                <tr>
-                  <td><?= h($k) ?></td>
-                  <td class="text-end"><?= number_format($v['quantidade'],0,',','.') ?></td>
-                  <td class="text-end"><?= money_br_compact($v['valor_servico']) ?></td>
-                  <td class="text-end"><?= money_br_compact($v['valor_programado']) ?></td>
-                  <td class="text-end"><?= money_br_compact($v['valor_executado']) ?></td>
-                </tr>
-              <?php endforeach; ?>
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <div class="col-lg-6">
-        <div class="card card-glass p-3 h-100">
-          <h6 class="mb-3">Por Responsável</h6>
-          <table class="table table-sm align-middle text-white-50">
-            <thead><tr><th>Responsável</th><th class="text-end">Obras</th><th class="text-end">Vlr. Serviço</th><th class="text-end">Programado</th><th class="text-end">Executado</th></tr></thead>
-            <tbody>
-              <?php foreach ($grp_resp as $k=>$v): ?>
-                <tr>
-                  <td><?= h($k) ?></td>
-                  <td class="text-end"><?= number_format($v['quantidade'],0,',','.') ?></td>
-                  <td class="text-end"><?= money_br_compact($v['valor_servico']) ?></td>
-                  <td class="text-end"><?= money_br_compact($v['valor_programado']) ?></td>
-                  <td class="text-end"><?= money_br_compact($v['valor_executado']) ?></td>
-                </tr>
-              <?php endforeach; ?>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- Análises por Responsável: substituídas por gráficos no topo -->
-
-    <!-- Conclusão no período: por Tipo e por Responsável -->
-    <div class="row g-3 mb-4">
-      <div class="col-lg-6">
-        <div class="card card-glass p-3 h-100">
-          <h6 class="mb-3">Conclusão no período por Tipo</h6>
-          <table class="table table-sm align-middle text-white-50">
-            <thead><tr><th>Tipo</th><th class="text-end">Obras</th><th class="text-end">c/ prog. conclusão</th><th class="text-end">Concluídas</th></tr></thead>
-            <tbody>
-              <?php foreach ($conc_tipo as $r): ?>
-                <tr>
-                  <td><?= h($r['grp']) ?></td>
-                  <td class="text-end"><?= number_format((int)$r['obras'],0,',','.') ?></td>
-                  <td class="text-end"><?= number_format((int)$r['com_prog_conc'],0,',','.') ?></td>
-                  <td class="text-end"><?= number_format((int)$r['concluidas'],0,',','.') ?></td>
-                </tr>
-              <?php endforeach; ?>
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <div class="col-lg-6">
-        <div class="card card-glass p-3 h-100">
-          <h6 class="mb-3">Conclusão no período por Responsável</h6>
-          <table class="table table-sm align-middle text-white-50">
-            <thead><tr><th>Responsável</th><th class="text-end">Obras</th><th class="text-end">c/ prog. conclusão</th><th class="text-end">Concluídas</th></tr></thead>
-            <tbody>
-              <?php foreach ($conc_resp as $r): ?>
-                <tr>
-                  <td><?= h($r['grp']) ?></td>
-                  <td class="text-end"><?= number_format((int)$r['obras'],0,',','.') ?></td>
-                  <td class="text-end"><?= number_format((int)$r['com_prog_conc'],0,',','.') ?></td>
-                  <td class="text-end"><?= number_format((int)$r['concluidas'],0,',','.') ?></td>
                 </tr>
               <?php endforeach; ?>
             </tbody>
@@ -947,9 +950,54 @@ $responsaveis = fetchPairs($pdo, 'SELECT DISTINCT u.id, u.nome FROM obra o LEFT 
         // Gráficos de Conclusão
         const dataConcTipo = <?= json_encode($chartConcTipo, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) ?>;
         const ctx3 = document.getElementById('chartConcTipo').getContext('2d');
+        // Barras sobrepostas (nested): Concluídas dentro de c/ prog. conclusão dentro de Obras
+        // Estratégia: não agrupar datasets (grouped:false) e reduzir barThickness progressivamente
+        const dsObrasCT = Object.assign({}, dataConcTipo.datasets?.[0] || {}, {
+          label: 'Obras',
+          // Sem preenchimento; apenas borda pontilhada (plano de fundo)
+          backgroundColor: 'rgba(0,0,0,0)',
+          borderColor: '#6ea6ef',
+          borderWidth: 2,
+          borderDash: [6, 4],
+          borderDashOffset: 0,
+          grouped: false,
+          barThickness: 30,
+          categoryPercentage: 1.0,
+          barPercentage: 1.0,
+          order: 1,
+        });
+        const dsProgCT = Object.assign({}, dataConcTipo.datasets?.[1] || {}, {
+          label: 'c/ prog. conclusão',
+          // Sem preenchimento; apenas borda pontilhada (plano intermediário)
+          backgroundColor: 'rgba(0,0,0,0)',
+          borderColor: '#b38700',
+          borderWidth: 2,
+          borderDash: [6, 4],
+          borderDashOffset: 0,
+          grouped: false,
+          barThickness: 22,
+          categoryPercentage: 1.0,
+          barPercentage: 1.0,
+          order: 2,
+        });
+        const dsConcCT = Object.assign({}, dataConcTipo.datasets?.[2] || {}, {
+          label: 'Concluídas',
+          // Preenchimento forte e visível (plano frontal)
+          backgroundColor: '#2ecc71',
+          borderColor: '#1b5e20',
+          borderWidth: 1,
+          grouped: false,
+          barThickness: 14,
+          categoryPercentage: 1.0,
+          barPercentage: 1.0,
+          order: 3,
+        });
         new Chart(ctx3, {
           type: 'bar',
-          data: dataConcTipo,
+          data: {
+            labels: dataConcTipo.labels || [],
+            datasets: [dsObrasCT, dsProgCT, dsConcCT]
+          },
           options: {
             responsive: true,
             maintainAspectRatio: false,
@@ -966,9 +1014,50 @@ $responsaveis = fetchPairs($pdo, 'SELECT DISTINCT u.id, u.nome FROM obra o LEFT 
 
         const dataConcResp = <?= json_encode($chartConcResp, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) ?>;
         const ctx4 = document.getElementById('chartConcResp').getContext('2d');
+        // Barras aninhadas (nested) também para Responsável
+        const dsObrasCR = Object.assign({}, dataConcResp.datasets?.[0] || {}, {
+          label: 'Obras',
+          backgroundColor: 'rgba(0,0,0,0)',
+          borderColor: '#6ea6ef',
+          borderWidth: 2,
+          borderDash: [6, 4],
+          borderDashOffset: 0,
+          grouped: false,
+          barThickness: 30,
+          categoryPercentage: 1.0,
+          barPercentage: 1.0,
+          order: 1,
+        });
+        const dsProgCR = Object.assign({}, dataConcResp.datasets?.[1] || {}, {
+          label: 'c/ prog. conclusão',
+          backgroundColor: 'rgba(0,0,0,0)',
+          borderColor: '#b38700',
+          borderWidth: 2,
+          borderDash: [6, 4],
+          borderDashOffset: 0,
+          grouped: false,
+          barThickness: 22,
+          categoryPercentage: 1.0,
+          barPercentage: 1.0,
+          order: 2,
+        });
+        const dsConcCR = Object.assign({}, dataConcResp.datasets?.[2] || {}, {
+          label: 'Concluídas',
+          backgroundColor: '#2ecc71',
+          borderColor: '#1b5e20',
+          borderWidth: 1,
+          grouped: false,
+          barThickness: 14,
+          categoryPercentage: 1.0,
+          barPercentage: 1.0,
+          order: 3,
+        });
         new Chart(ctx4, {
           type: 'bar',
-          data: dataConcResp,
+          data: {
+            labels: dataConcResp.labels || [],
+            datasets: [dsObrasCR, dsProgCR, dsConcCR]
+          },
           options: {
             responsive: true,
             maintainAspectRatio: false,

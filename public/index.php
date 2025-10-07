@@ -31,6 +31,15 @@ if (!function_exists('h')) {
     .icon-gradient-5 { background:linear-gradient(135deg,#7c3aed,#db2777); color:#fff; }
     .icon-gradient-6 { background:linear-gradient(135deg,#0ea5e9,#10b981); color:#fff; }
     .icon-gradient-7 { background:linear-gradient(135deg,#475569,#6366f1); color:#fff; }
+    /* Destaque para cards principais */
+    .card-featured { border:1px solid rgba(129,140,248,0.7); box-shadow:0 0 0 1px rgba(129,140,248,0.4), 0 0 22px -4px rgba(129,140,248,0.55); }
+    .card-featured:hover { box-shadow:0 0 0 1px rgba(129,140,248,0.55), 0 0 28px -3px rgba(129,140,248,0.75); }
+    .card-featured .icon-wrap { box-shadow:0 0 0 2px rgba(255,255,255,0.15); }
+    /* Estado desabilitado / Em breve */
+    .card-disabled { opacity:.55; cursor:not-allowed; }
+    .card-disabled:hover { transform:none; box-shadow:none; border-color:rgba(255,255,255,0.08); }
+    .card-disabled:after { content:'Em breve'; position:absolute; top:8px; right:12px; background:linear-gradient(135deg,#6366f1,#7c3aed); color:#fff; font-size:.6rem; padding:4px 9px 3px; border-radius:999px; letter-spacing:.5px; text-transform:uppercase; font-weight:600; }
+    .card-disabled .stretched-link { pointer-events:none; }
     h5.fw-semibold { font-size:1.02rem; letter-spacing:.3px; }
     .small.mb-0 { line-height:1.15rem; }
     @media (max-width: 575px){ .icon-wrap { width:50px; height:50px; font-size:1.35rem; } }
@@ -51,7 +60,7 @@ if (!function_exists('h')) {
       <p class="text-secondary mb-4">Escolha uma das ações rápidas abaixo para começar.</p>
     </div>
     <div class="col-lg-3 col-md-4 col-sm-6">
-      <div class="p-4 rounded-4 card-glass h-100 quick-card">
+      <div class="p-4 rounded-4 card-glass h-100 quick-card card-featured">
         <div class="icon-wrap icon-gradient-1"><i class="bi bi-collection"></i></div>
         <h5 class="fw-semibold mb-2">Carteira de obras Sintética</h5>
         <p class="text-secondary small mb-0">Visão resumida da carteira.</p>
@@ -59,7 +68,7 @@ if (!function_exists('h')) {
       </div>
     </div>
     <div class="col-lg-3 col-md-4 col-sm-6">
-      <div class="p-4 rounded-4 card-glass h-100 quick-card">
+      <div class="p-4 rounded-4 card-glass h-100 quick-card card-featured">
         <div class="icon-wrap icon-gradient-2"><i class="bi bi-calendar-check"></i></div>
         <h5 class="fw-semibold mb-2">Carteira de obras Programada</h5>
         <p class="text-secondary small mb-0">Obras com programação vigente.</p>
@@ -67,21 +76,15 @@ if (!function_exists('h')) {
       </div>
     </div>
     <div class="col-lg-3 col-md-4 col-sm-6">
-      <div class="p-4 rounded-4 card-glass h-100 quick-card" onclick="alert('Em desenvolvimento: Programação de obras');">
+      <div class="p-4 rounded-4 card-glass h-100 quick-card card-featured">
         <div class="icon-wrap icon-gradient-3"><i class="bi bi-diagram-3"></i></div>
-        <h5 class="fw-semibold mb-2">Programação de obras</h5>
-        <p class="text-secondary small mb-0">Detalhamento de programações.</p>
+        <h5 class="fw-semibold mb-2">Programações de Obras</h5>
+        <p class="text-secondary small mb-0">Clusterização de tipos e KPIs de aderência.</p>
+        <a class="stretched-link" href="<?= h(igob_url('programacoes_obras.php')) ?>"></a>
       </div>
     </div>
     <div class="col-lg-3 col-md-4 col-sm-6">
-      <div class="p-4 rounded-4 card-glass h-100 quick-card" onclick="alert('Em desenvolvimento: Produtividade');">
-        <div class="icon-wrap icon-gradient-4"><i class="bi bi-speedometer2"></i></div>
-        <h5 class="fw-semibold mb-2">Produtividade</h5>
-        <p class="text-secondary small mb-0">Indicadores de produção.</p>
-      </div>
-    </div>
-    <div class="col-lg-3 col-md-4 col-sm-6">
-      <div class="p-4 rounded-4 card-glass h-100 quick-card">
+      <div class="p-4 rounded-4 card-glass h-100 quick-card card-featured">
         <div class="icon-wrap icon-gradient-5"><i class="bi bi-bar-chart-line"></i></div>
         <h5 class="fw-semibold mb-2">Meta x Programado x Executado</h5>
         <p class="text-secondary small mb-0">Acompanhamento comparativo.</p>
@@ -89,17 +92,24 @@ if (!function_exists('h')) {
       </div>
     </div>
     <div class="col-lg-3 col-md-4 col-sm-6">
-      <div class="p-4 rounded-4 card-glass h-100 quick-card" onclick="alert('Em desenvolvimento: Viabilidade');">
-        <div class="icon-wrap icon-gradient-6"><i class="bi bi-clipboard-data"></i></div>
-        <h5 class="fw-semibold mb-2">Viabilidade</h5>
-        <p class="text-secondary small mb-0">Análise de viabilidade.</p>
+      <div class="p-4 rounded-4 card-glass h-100 quick-card card-disabled" aria-disabled="true">
+        <div class="icon-wrap icon-gradient-4"><i class="bi bi-speedometer2"></i></div>
+        <h5 class="fw-semibold mb-2">Produtividade</h5>
+        <p class="text-secondary small mb-0">Em breve: indicadores de produção.</p>
       </div>
     </div>
     <div class="col-lg-3 col-md-4 col-sm-6">
-      <div class="p-4 rounded-4 card-glass h-100 quick-card" onclick="alert('Em desenvolvimento: Fechamento');">
+      <div class="p-4 rounded-4 card-glass h-100 quick-card card-disabled" aria-disabled="true">
+        <div class="icon-wrap icon-gradient-6"><i class="bi bi-clipboard-data"></i></div>
+        <h5 class="fw-semibold mb-2">Viabilidade</h5>
+        <p class="text-secondary small mb-0">Em breve: análise de viabilidade.</p>
+      </div>
+    </div>
+    <div class="col-lg-3 col-md-4 col-sm-6">
+      <div class="p-4 rounded-4 card-glass h-100 quick-card card-disabled" aria-disabled="true">
         <div class="icon-wrap icon-gradient-7"><i class="bi bi-clipboard-check"></i></div>
         <h5 class="fw-semibold mb-2">Fechamento</h5>
-        <p class="text-secondary small mb-0">Consolidação de períodos.</p>
+        <p class="text-secondary small mb-0">Em breve: consolidação de períodos.</p>
       </div>
     </div>
   </div>

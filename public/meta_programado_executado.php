@@ -689,6 +689,9 @@ if (!$mustRequire) {
     .loading-overlay .spinner-border { width:3rem; height:3rem; }
     /* Altura confortável para o gráfico, responsiva */
     #kpiChart { width: 100% !important; height: clamp(220px, 34vh, 360px) !important; }
+    #filterForm .form-control, #filterForm .btn, #filterForm .dropdown > button { min-height:38px; }
+    #filterForm .btn-outline-light { display:flex; align-items:center; }
+    .btn-reset-filters-memory { white-space:nowrap; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -1484,4 +1487,16 @@ if (!$mustRequire) {
     })();
   </script>
 </body>
+<script src="<?= h(igob_url('assets/js/filter_memory.js')) ?>"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  IGOBFilterMemory.init({
+    userId: <?= (int)($__user['id'] ?? 0) ?>,
+    page: 'meta_programado_executado',
+  formSelector: '#filterForm',
+    autoApply: true,
+    autoSubmit: true
+  });
+});
+</script>
 </html>

@@ -409,6 +409,10 @@ $responsaveis = fetchPairs($pdo, 'SELECT DISTINCT u.id, u.nome FROM obra o LEFT 
     .table tbody td { border-color: rgba(255,255,255,.05); }
     .loading-overlay { position:fixed; inset:0; background:rgba(10,15,28,.75); backdrop-filter: blur(6px); display:none; align-items:center; justify-content:center; z-index:1050; }
     .loading-overlay .spinner-border { width:3rem; height:3rem; }
+    /* Harmonização controles filtros */
+    #filterForm .form-control, #filterForm .btn, #filterForm .dropdown > button { min-height:38px; }
+    #filterForm .btn-outline-light { display:flex; align-items:center; }
+    .btn-reset-filters-memory { white-space:nowrap; }
   </style>
 </head>
 <body class="text-light">
@@ -886,6 +890,7 @@ $responsaveis = fetchPairs($pdo, 'SELECT DISTINCT u.id, u.nome FROM obra o LEFT 
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="<?= h(igob_url('assets/js/filter_memory.js')) ?>"></script>
   <script>
     (function(){
       var form = document.getElementById('filterForm');
@@ -1074,6 +1079,18 @@ $responsaveis = fetchPairs($pdo, 'SELECT DISTINCT u.id, u.nome FROM obra o LEFT 
       } catch (e) { console.error('Erro ao iniciar gráficos:', e); }
       <?php endif; ?>
     })();
+    // Memória de filtros
+    document.addEventListener('DOMContentLoaded', function(){
+      if(window.IGOBFilterMemory){
+        IGOBFilterMemory.init({
+          userId: <?= (int)($uid ?? ($__user['id'] ?? 0)) ?>,
+          page: 'carteira_programadas',
+          formSelector: '#filterForm',
+          autoApply: true,
+          autoSubmit: true
+        });
+      }
+    });
   </script>
 </body>
 </html>

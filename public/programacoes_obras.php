@@ -192,6 +192,11 @@ if(!$mustRequire){
     .kpi-value { font-size:1.5rem; font-weight:700; }
     .badge-soft { background: rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.1); }
     .table thead th { white-space:nowrap; }
+    /* Harmonização de altura dos controles */
+    #filterForm .form-control, #filterForm .btn, #filterForm .dropdown > button { min-height:38px; }
+    #filterForm .btn-outline-light { display:flex; align-items:center; }
+    #filterForm .btn-primary { display:flex; align-items:center; gap:.4rem; }
+    .btn-reset-filters-memory { white-space:nowrap; }
   </style>
 </head>
 <body class="text-light">
@@ -524,6 +529,7 @@ if(!$mustRequire){
     <?php endif; ?>
   </main>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="<?= h(igob_url('assets/js/filter_memory.js')) ?>"></script>
   <script>
     (function(){
       var form=document.getElementById('filterForm');
@@ -653,6 +659,18 @@ if(!$mustRequire){
         }
       } catch(e) { console.warn('Chart init error', e); }
     })();
+    // Memória de filtros
+    document.addEventListener('DOMContentLoaded', function(){
+      if(window.IGOBFilterMemory){
+        IGOBFilterMemory.init({
+          userId: <?= (int)($__user['id'] ?? 0) ?>,
+          page: 'programacoes_obras',
+          formSelector: '#filterForm',
+          autoApply: true,
+          autoSubmit: true
+        });
+      }
+    });
   </script>
 </body>
 </html>

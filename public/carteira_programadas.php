@@ -9,16 +9,16 @@ $__user = auth_current_user();
 // Helpers
 function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 function bindInClause(PDO $pdo, string $field, array $values, array &$params, string $prefix) {
-    $keys = [];
-    $i = 0;
-    foreach ($values as $v) {
-        $key = ":{$prefix}{$i}";
-        $keys[] = $key;
-        $params[$key] = $v;
-        $i++;
-    }
-    if (!$keys) return null;
-    return "$field IN (" . implode(',', $keys) . ")";
+  $keys = [];
+  $i = 0;
+  foreach ($values as $v) {
+    $key = ":{$prefix}{$i}";
+    $keys[] = $key;
+    $params[$key] = $v;
+    $i++;
+  }
+  if (!$keys) return null;
+  return "$field IN (" . implode(',', $keys) . ")";
 }
 function fetchAllAssoc(PDO $pdo, string $sql, array $params): array {
   $st = $pdo->prepare($sql);
@@ -96,6 +96,11 @@ $mustSelectFilial = count($filiaisSel) === 0;
 $mustSelectDates = !$data_ini || !$data_fim;
 $mustRequire = $mustSelectFilial || $mustSelectDates;
 
+// Inicializações para evitar notices em cenários sem dados
+$obrasPrevConc = [];
+$tot_prev_qtd = 0; $tot_prev_valor_servico = 0; $tot_prev_programado = 0; $tot_prev_executado = 0;
+$tot_qtd = 0; $tot_valor_servico = 0; $tot_programado = 0; $tot_executado = 0;
+
 // Detectar colunas em programacao
 $progDateCol = detect_column($pdo, 'programacao', ['data_programacao','data','data_prevista','dt_programacao','dt','data_agenda','data_conclusao']);
 // Coluna padrão para indicar programação de conclusão: 'S' (sim) / 'N' (não)
@@ -135,31 +140,68 @@ if (!$mustRequire) {
 
 // KPIs (sobre o conjunto filtrado de obras)
 if (!$mustRequire) {
-  $sqlKpis = "
-  SELECT 
-    COUNT(*) AS qtd,
-    SUM(COALESCE(o.valor_servico,0)) AS vlr_servico,
-    SUM(COALESCE(o.poste_distribuicao,0) + COALESCE(o.poste_transmissao,0)) AS postes_orc,
-    COALESCE(SUM(p.prog),0) AS vlr_programado,
-    COALESCE(SUM(s.exec),0) AS vlr_executado
-  FROM (
-    SELECT o.id, o.valor_servico, o.poste_distribuicao, o.poste_transmissao
-    FROM obra o
-    WHERE $whereSql
-  ) o
-  LEFT JOIN (
-    SELECT obra, SUM(financeiro) AS prog FROM programacao WHERE tipo <> 'PROGRAMAÇÃO CANCELADA' GROUP BY obra
-  ) p ON p.obra = o.id
-  LEFT JOIN (
-    SELECT obra, SUM(quantidade*valor) AS exec FROM programacao_servico WHERE status='EXECUTADO' GROUP BY obra
-  ) s ON s.obra = o.id";
-  $stK = $pdo->prepare($sqlKpis); $stK->execute(filterParams($paramsWhere, $sqlKpis)); $k = $stK->fetch(PDO::FETCH_ASSOC) ?: [];
+  // KPI principal: inclui previsão de conclusão baseada em programação marcada como conclusão no período
+  if ($progDateCol && $progConclusaoCol) {
+    $sqlKpis = "
+    SELECT 
+      COUNT(*) AS qtd,
+      SUM(COALESCE(o.valor_servico,0)) AS vlr_servico,
+      SUM(COALESCE(o.poste_distribuicao,0) + COALESCE(o.poste_transmissao,0)) AS postes_orc,
+      COALESCE(SUM(s.exec),0) AS vlr_executado,
+      SUM(CASE WHEN UPPER(COALESCE(o.situacao,'')) LIKE 'CONCLU%' THEN COALESCE(s.exec,0) END) AS vlr_exec_conc
+    FROM (
+      SELECT o.id, o.valor_servico, o.poste_distribuicao, o.poste_transmissao, o.situacao
+      FROM obra o
+      WHERE $whereSql
+    ) o
+    LEFT JOIN (
+      SELECT obra, SUM(financeiro) AS prog FROM programacao WHERE tipo <> 'PROGRAMAÇÃO CANCELADA' GROUP BY obra
+    ) p ON p.obra = o.id
+    LEFT JOIN (
+      SELECT obra, SUM(quantidade*valor) AS exec FROM programacao_servico WHERE status='EXECUTADO' GROUP BY obra
+    ) s ON s.obra = o.id";
+  } else {
+    // Fallback caso não seja possível detectar as colunas de programação / conclusão
+    $sqlKpis = "
+    SELECT 
+      COUNT(*) AS qtd,
+      SUM(COALESCE(o.valor_servico,0)) AS vlr_servico,
+      SUM(COALESCE(o.poste_distribuicao,0) + COALESCE(o.poste_transmissao,0)) AS postes_orc,
+      COALESCE(SUM(s.exec),0) AS vlr_executado,
+      0 AS vlr_prev_conc,
+      SUM(CASE WHEN UPPER(COALESCE(o.situacao,'')) LIKE 'CONCLU%' THEN COALESCE(s.exec,0) END) AS vlr_exec_conc
+    FROM (
+      SELECT o.id, o.valor_servico, o.poste_distribuicao, o.poste_transmissao, o.situacao
+      FROM obra o
+      WHERE $whereSql
+    ) o
+    LEFT JOIN (
+      SELECT obra, SUM(financeiro) AS prog FROM programacao WHERE tipo <> 'PROGRAMAÇÃO CANCELADA' GROUP BY obra
+    ) p ON p.obra = o.id
+    LEFT JOIN (
+      SELECT obra, SUM(quantidade*valor) AS exec FROM programacao_servico WHERE status='EXECUTADO' GROUP BY obra
+    ) s ON s.obra = o.id";
+  }
+  $paramsKpis = $paramsWhere;
+  $stK = $pdo->prepare($sqlKpis); $stK->execute(filterParams($paramsKpis, $sqlKpis)); $k = $stK->fetch(PDO::FETCH_ASSOC) ?: [];
+  // Previsão de Conclusão: soma valor_servico das obras que possuem programação de conclusão no período (mesma lógica do flag concluiu_periodo)
+  if ($progDateCol && $progConclusaoCol) {
+    $sqlPrevConc = "SELECT SUM(COALESCE(o.valor_servico,0)) FROM obra o WHERE $whereSql AND EXISTS (SELECT 1 FROM programacao p2 WHERE p2.obra=o.id AND p2.$progDateCol BETWEEN :pc_dini AND :pc_dfim AND p2.tipo <> 'PROGRAMAÇÃO CANCELADA' AND UPPER(COALESCE(p2.$progConclusaoCol,''))='S')";
+    $stPC = $pdo->prepare($sqlPrevConc);
+    $paramsPrev = $paramsWhere;
+    $paramsPrev[':pc_dini'] = $data_ini; $paramsPrev[':pc_dfim'] = $data_fim;
+    $stPC->execute(filterParams($paramsPrev, $sqlPrevConc));
+    $k['vlr_prev_conc'] = (float)$stPC->fetchColumn();
+  } else {
+    $k['vlr_prev_conc'] = 0.0;
+  }
 } else { $k = []; }
 $kpi_quantidade = (int)($k['qtd'] ?? 0);
 $kpi_valor_servico = (float)($k['vlr_servico'] ?? 0);
-$kpi_valor_programado = (float)($k['vlr_programado'] ?? 0);
 $kpi_valor_executado = (float)($k['vlr_executado'] ?? 0);
 $kpi_postes_orc = (float)($k['postes_orc'] ?? 0);
+$kpi_prev_conclusao = (float)($k['vlr_prev_conc'] ?? 0);
+$kpi_exec_concluido = (float)($k['vlr_exec_conc'] ?? 0);
 
 // KPI extra: obras com programação de conclusão vs obras concluídas (no período)
 if (!$mustRequire && $progDateCol && $progConclusaoCol) {
@@ -342,9 +384,11 @@ if (!$mustRequire && $progDateCol && $progConclusaoCol) {
 
 // Lista com agregados e flag de conclusão no período
 if (!$mustRequire) {
-  $conclFlagExpr = ($progDateCol && $progConclusaoCol)
-    ? "EXISTS (SELECT 1 FROM programacao p2 WHERE p2.obra=o.id AND p2.$progDateCol BETWEEN :dini2 AND :dfim2 AND UPPER(COALESCE(p2.$progConclusaoCol,''))='S') AS concluiu_periodo,"
-    : "0 AS concluiu_periodo,";
+  // Predicado padronizado para "previsão de conclusão no período" (exclui programações canceladas)
+  $conclusaoPredicate = ($progDateCol && $progConclusaoCol)
+    ? "EXISTS (SELECT 1 FROM programacao p2 WHERE p2.obra=o.id AND p2.$progDateCol BETWEEN :dini2 AND :dfim2 AND p2.tipo <> 'PROGRAMAÇÃO CANCELADA' AND UPPER(COALESCE(p2.$progConclusaoCol,''))='S')"
+    : "0";
+  $conclFlagExpr = $conclusaoPredicate . " AS concluiu_periodo,";
   $sqlLista = "
   SELECT 
     o.id, o.codigo, o.descricao, o.filial, o.tipo, o.situacao, o.data_entrada,
@@ -377,6 +421,46 @@ if (!$mustRequire) {
   $paramsList = $paramsWhere;
   if ($progDateCol && $progConclusaoCol) { $paramsList[':dini2'] = $data_ini; $paramsList[':dfim2'] = $data_fim; }
   $stL->execute(filterParams($paramsList, $sqlLista)); $obras = $stL->fetchAll();
+
+  // Exportação simples para Excel (HTML table) se solicitado
+  if (isset($_GET['export']) && $_GET['export'] === 'xls') {
+    // Requisição para export: buscar todos os registros sem limite
+    $sqlExport = str_replace("LIMIT $per_page OFFSET $offset", '', $sqlLista);
+    $stE = $pdo->prepare($sqlExport);
+    $stE->execute(filterParams($paramsList, $sqlExport));
+    $rowsExport = $stE->fetchAll(PDO::FETCH_ASSOC);
+    $filename = 'carteira_programadas_' . ($data_ini ?: 'ini') . '_a_' . ($data_fim ?: 'fim') . '.xls';
+    header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
+    header('Content-Disposition: attachment; filename=' . $filename);
+    header('Pragma: no-cache'); header('Expires: 0');
+    echo "<meta charset='UTF-8'>";
+    echo "<table border='1'>";
+    echo '<tr>'
+      .'<th>ID</th><th>Código</th><th>Descrição</th><th>Tipo</th><th>Situação</th><th>Responsável</th><th>Valor Serviço</th><th>Programado</th><th>Executado</th><th>Postes Orç.</th><th>Postes Inst.</th><th>Conclusão Período</th><th>Entrada</th>'
+      .'</tr>';
+    foreach ($rowsExport as $r) {
+      echo '<tr>'
+        .'<td>'.(int)$r['id'].'</td>'
+        .'<td>'.h($r['codigo']).'</td>'
+        .'<td>'.h($r['descricao']).'</td>'
+        .'<td>'.h($r['tipo']).'</td>'
+        .'<td>'.h($r['situacao']).'</td>'
+        .'<td>'.h($r['responsavel']).'</td>'
+        .'<td>'.number_format((float)$r['valor_servico'],2,',','.').'</td>'
+        .'<td>'.number_format((float)$r['valor_programado'],2,',','.').'</td>'
+        .'<td>'.number_format((float)$r['valor_executado'],2,',','.').'</td>'
+        .'<td>'.number_format((float)$r['postes_orc'],0,',','.').'</td>'
+        .'<td>'.number_format((float)$r['postes_instalados'],0,',','.').'</td>'
+        .'<td>'.(!empty($r['concluiu_periodo']) ? 'Sim' : 'Não').'</td>'
+        .'<td>'.h($r['data_entrada']).'</td>'
+        .'</tr>';
+    }
+    echo '</table>';
+    exit;
+  }
+
+  // Construção do subconjunto de previsão de conclusão (se não montado ainda)
+  // (Removido bloco de construção de subconjunto com previsão de conclusão)
 } else { $obras = []; }
 
 // Opções para filtros: $filiais já está carregado e restrito pelo vínculo do usuário
@@ -544,10 +628,10 @@ $responsaveis = fetchPairs($pdo, 'SELECT DISTINCT u.id, u.nome FROM obra o LEFT 
       <div class="col">
         <div class="card card-glass p-3 kpi h-100">
           <div class="d-flex align-items-center gap-3">
-            <div class="icon bg-warning-subtle text-warning d-flex align-items-center justify-content-center rounded"><i class="bi bi-clipboard-check"></i></div>
+            <div class="icon bg-success-subtle text-success d-flex align-items-center justify-content-center rounded"><i class="bi bi-graph-up-arrow"></i></div>
             <div>
-              <div class="kpi-title text-secondary">Valor Programado</div>
-              <div class="kpi-value"><?= money_br_compact($kpi_valor_programado) ?></div>
+              <div class="kpi-title text-secondary">Valor Executado</div>
+              <div class="kpi-value"><?= money_br_compact($kpi_valor_executado) ?></div>
             </div>
           </div>
         </div>
@@ -555,10 +639,21 @@ $responsaveis = fetchPairs($pdo, 'SELECT DISTINCT u.id, u.nome FROM obra o LEFT 
       <div class="col">
         <div class="card card-glass p-3 kpi h-100">
           <div class="d-flex align-items-center gap-3">
-            <div class="icon bg-success-subtle text-success d-flex align-items-center justify-content-center rounded"><i class="bi bi-graph-up-arrow"></i></div>
+            <div class="icon bg-warning-subtle text-warning d-flex align-items-center justify-content-center rounded"><i class="bi bi-flag"></i></div>
             <div>
-              <div class="kpi-title text-secondary">Valor Executado</div>
-              <div class="kpi-value"><?= money_br_compact($kpi_valor_executado) ?></div>
+              <div class="kpi-title text-secondary">Previsão de Conclusão</div>
+              <div class="kpi-value"><?= money_br_compact($kpi_prev_conclusao) ?></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="card card-glass p-3 kpi h-100">
+          <div class="d-flex align-items-center gap-3">
+            <div class="icon bg-success-subtle text-success d-flex align-items-center justify-content-center rounded"><i class="bi bi-check2-circle"></i></div>
+            <div>
+              <div class="kpi-title text-secondary">Executado Concluído</div>
+              <div class="kpi-value"><?= money_br_compact($kpi_exec_concluido) ?></div>
             </div>
           </div>
         </div>
@@ -813,8 +908,13 @@ $responsaveis = fetchPairs($pdo, 'SELECT DISTINCT u.id, u.nome FROM obra o LEFT 
 
     <!-- Lista de obras -->
     <div class="card card-glass p-3 mb-5">
-      <div class="d-flex align-items-center justify-content-between">
-        <h6 class="mb-3 mb-sm-0">Obras no período</h6>
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-3">
+          <h6 class="mb-0">Obras no período</h6>
+          <?php if(!$mustRequire): $exportParams = $_GET; $exportParams['export'] = 'xls'; $exportUrl = '?'.http_build_query($exportParams); ?>
+            <a href="<?= h($exportUrl) ?>" class="btn btn-sm btn-outline-success"><i class="bi bi-file-earmark-excel"></i> Exportar</a>
+          <?php endif; ?>
+        </div>
         <form method="get" class="d-flex gap-2 mb-0">
           <?php $keep = $_GET; unset($keep['q'], $keep['page']); foreach ($keep as $k=>$v) { if (is_array($v)) { foreach ($v as $vv) echo '<input type="hidden" name="'.h($k).'[]" value="'.h($vv).'">'; } else { echo '<input type="hidden" name="'.h($k).'" value="'.h($v).'">'; } } ?>
           <input type="search" name="q" value="<?= h($search) ?>" class="form-control form-control-sm" placeholder="Buscar por código ou descrição..." />
@@ -859,6 +959,17 @@ $responsaveis = fetchPairs($pdo, 'SELECT DISTINCT u.id, u.nome FROM obra o LEFT 
                 <td><?= h($r['data_entrada']) ?></td>
               </tr>
             <?php endforeach; ?>
+            <?php if(!$mustRequire): ?>
+            <tr class="table-dark">
+              <th colspan="6" class="text-end">Totais (lista)</th>
+              <th class="text-end"><?= money_br_compact($tot_valor_servico ?? 0) ?></th>
+              <th class="text-end"><?= money_br_compact($tot_programado ?? 0) ?></th>
+              <th class="text-end"><?= money_br_compact($tot_executado ?? 0) ?></th>
+              <th class="text-end">—</th>
+              <th class="text-end">—</th>
+              <th colspan="2"></th>
+            </tr>
+            <?php endif; ?>
           </tbody>
         </table>
       </div>
@@ -887,6 +998,8 @@ $responsaveis = fetchPairs($pdo, 'SELECT DISTINCT u.id, u.nome FROM obra o LEFT 
         </nav>
       </div>
     </div>
+
+    <!-- Tabela de previsão de conclusão removida conforme solicitação -->
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

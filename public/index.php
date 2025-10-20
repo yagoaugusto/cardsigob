@@ -106,10 +106,11 @@ if (!function_exists('h')) {
       </div>
     </div>
     <div class="col-lg-3 col-md-4 col-sm-6">
-      <div class="p-4 rounded-4 card-glass h-100 quick-card card-disabled" aria-disabled="true">
-        <div class="icon-wrap icon-gradient-7"><i class="bi bi-clipboard-check"></i></div>
-        <h5 class="fw-semibold mb-2">Fechamento</h5>
-        <p class="text-secondary small mb-0">Em breve: consolidação de períodos.</p>
+      <div class="p-4 rounded-4 card-glass h-100 quick-card card-featured">
+        <div class="icon-wrap icon-gradient-7"><i class="bi bi-clipboard-data"></i></div>
+        <h5 class="fw-semibold mb-2">Medições</h5>
+        <p class="text-secondary small mb-0">Registro de medições e análises.</p>
+        <a class="stretched-link" href="<?= h(igob_url('medicoes.php')) ?>"></a>
       </div>
     </div>
   </div>

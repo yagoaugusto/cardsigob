@@ -148,7 +148,18 @@ if (!$mustRequire) {
       SUM(COALESCE(o.valor_servico,0)) AS vlr_servico,
       SUM(COALESCE(o.poste_distribuicao,0) + COALESCE(o.poste_transmissao,0)) AS postes_orc,
       COALESCE(SUM(s.exec),0) AS vlr_executado,
-      SUM(CASE WHEN UPPER(COALESCE(o.situacao,'')) LIKE 'CONCLU%' THEN COALESCE(s.exec,0) END) AS vlr_exec_conc
+      SUM(CASE WHEN UPPER(COALESCE(o.situacao,'')) LIKE 'CONCLU%' THEN COALESCE(s.exec,0) END) AS vlr_exec_conc,
+      SUM(CASE 
+            WHEN NOT (UPPER(COALESCE(o.situacao,'')) LIKE 'CONCLU%')
+             AND NOT EXISTS (
+               SELECT 1 FROM programacao px 
+               WHERE px.obra = o.id 
+                 AND px.tipo <> 'PROGRAMAÇÃO CANCELADA'
+                 AND px.$progDateCol BETWEEN :sp_dini AND :sp_dfim
+                 AND UPPER(COALESCE(px.$progConclusaoCol,'')) = 'S'
+             )
+            THEN COALESCE(s.exec,0) 
+          END) AS vlr_exec_sem_prog_conc
     FROM (
       SELECT o.id, o.valor_servico, o.poste_distribuicao, o.poste_transmissao, o.situacao
       FROM obra o
@@ -169,7 +180,18 @@ if (!$mustRequire) {
       SUM(COALESCE(o.poste_distribuicao,0) + COALESCE(o.poste_transmissao,0)) AS postes_orc,
       COALESCE(SUM(s.exec),0) AS vlr_executado,
       0 AS vlr_prev_conc,
-      SUM(CASE WHEN UPPER(COALESCE(o.situacao,'')) LIKE 'CONCLU%' THEN COALESCE(s.exec,0) END) AS vlr_exec_conc
+      SUM(CASE WHEN UPPER(COALESCE(o.situacao,'')) LIKE 'CONCLU%' THEN COALESCE(s.exec,0) END) AS vlr_exec_conc,
+      SUM(CASE 
+            WHEN NOT (UPPER(COALESCE(o.situacao,'')) LIKE 'CONCLU%')
+             AND NOT EXISTS (
+               SELECT 1 FROM programacao px 
+               WHERE px.obra = o.id 
+                 AND px.tipo <> 'PROGRAMAÇÃO CANCELADA'
+                 /* sem coluna de data detectada: aprox sem período */
+                 AND UPPER(COALESCE(px.$progConclusaoCol,'')) = 'S'
+             )
+            THEN COALESCE(s.exec,0) 
+          END) AS vlr_exec_sem_prog_conc
     FROM (
       SELECT o.id, o.valor_servico, o.poste_distribuicao, o.poste_transmissao, o.situacao
       FROM obra o
@@ -183,7 +205,17 @@ if (!$mustRequire) {
     ) s ON s.obra = o.id";
   }
   $paramsKpis = $paramsWhere;
-  $stK = $pdo->prepare($sqlKpis); $stK->execute(filterParams($paramsKpis, $sqlKpis)); $k = $stK->fetch(PDO::FETCH_ASSOC) ?: [];
+  // Garantir parâmetros de período quando o SQL usar :dini/:dfim
+  if ($progDateCol && $progConclusaoCol) {
+    $paramsKpis[':dini'] = $data_ini; 
+    $paramsKpis[':dfim'] = $data_fim;
+    // Placeholders exclusivos usados na subconsulta de sem prog. conclusão
+    $paramsKpis[':sp_dini'] = $data_ini;
+    $paramsKpis[':sp_dfim'] = $data_fim;
+  }
+  $stK = $pdo->prepare($sqlKpis);
+  $stK->execute(filterParams($paramsKpis, $sqlKpis));
+  $k = $stK->fetch(PDO::FETCH_ASSOC) ?: [];
   // Previsão de Conclusão: soma valor_servico das obras que possuem programação de conclusão no período (mesma lógica do flag concluiu_periodo)
   if ($progDateCol && $progConclusaoCol) {
     $sqlPrevConc = "SELECT SUM(COALESCE(o.valor_servico,0)) FROM obra o WHERE $whereSql AND EXISTS (SELECT 1 FROM programacao p2 WHERE p2.obra=o.id AND p2.$progDateCol BETWEEN :pc_dini AND :pc_dfim AND p2.tipo <> 'PROGRAMAÇÃO CANCELADA' AND UPPER(COALESCE(p2.$progConclusaoCol,''))='S')";
@@ -202,6 +234,7 @@ $kpi_valor_executado = (float)($k['vlr_executado'] ?? 0);
 $kpi_postes_orc = (float)($k['postes_orc'] ?? 0);
 $kpi_prev_conclusao = (float)($k['vlr_prev_conc'] ?? 0);
 $kpi_exec_concluido = (float)($k['vlr_exec_conc'] ?? 0);
+$kpi_exec_sem_prog_conc = (float)($k['vlr_exec_sem_prog_conc'] ?? 0);
 
 // KPI extra: obras com programação de conclusão vs obras concluídas (no período)
 if (!$mustRequire && $progDateCol && $progConclusaoCol) {
@@ -602,7 +635,8 @@ $responsaveis = fetchPairs($pdo, 'SELECT DISTINCT u.id, u.nome FROM obra o LEFT 
     <?php endif; ?>
 
     <!-- KPIs -->
-    <div class="row g-3 mb-4 row-cols-1 row-cols-sm-2 row-cols-lg-5 align-items-stretch">
+    <!-- Linha 1: Quantidade de obras; Conclusão no período; Postes (orçado) -->
+    <div class="row g-3 mb-2 row-cols-1 row-cols-sm-2 row-cols-lg-3 align-items-stretch">
       <div class="col">
         <div class="card card-glass p-3 kpi h-100">
           <div class="d-flex align-items-center gap-3">
@@ -617,10 +651,11 @@ $responsaveis = fetchPairs($pdo, 'SELECT DISTINCT u.id, u.nome FROM obra o LEFT 
       <div class="col">
         <div class="card card-glass p-3 kpi h-100">
           <div class="d-flex align-items-center gap-3">
-            <div class="icon bg-info-subtle text-info d-flex align-items-center justify-content-center rounded"><i class="bi bi-cash-coin"></i></div>
+            <div class="icon bg-primary-subtle text-primary d-flex align-items-center justify-content-center rounded"><i class="bi bi-calendar2-check"></i></div>
             <div>
-              <div class="kpi-title text-secondary">Valor Serviço</div>
-              <div class="kpi-value"><?= money_br_compact($kpi_valor_servico) ?></div>
+              <div class="kpi-title text-secondary">Conclusão no período</div>
+              <div class="kpi-value"><?= number_format($kpi_obras_prog_conc,0,',','.') ?> / <?= number_format($kpi_obras_concluidas,0,',','.') ?></div>
+              <div class="text-secondary small">Prog. conclusão / Concluídas</div>
             </div>
           </div>
         </div>
@@ -628,10 +663,25 @@ $responsaveis = fetchPairs($pdo, 'SELECT DISTINCT u.id, u.nome FROM obra o LEFT 
       <div class="col">
         <div class="card card-glass p-3 kpi h-100">
           <div class="d-flex align-items-center gap-3">
-            <div class="icon bg-success-subtle text-success d-flex align-items-center justify-content-center rounded"><i class="bi bi-graph-up-arrow"></i></div>
+            <div class="icon bg-secondary-subtle text-secondary d-flex align-items-center justify-content-center rounded"><i class="bi bi-signpost"></i></div>
             <div>
-              <div class="kpi-title text-secondary">Valor Executado</div>
-              <div class="kpi-value"><?= money_br_compact($kpi_valor_executado) ?></div>
+              <div class="kpi-title text-secondary">Postes (orçado)</div>
+              <div class="kpi-value"><?= number_format($kpi_postes_orc, 0, ',', '.') ?></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Linha 2: Valor serviço; Previsão de conclusão; Valor Executado; Executado Concluído; Executado sem prog. conclusão -->
+    <div class="row g-3 mb-4 row-cols-1 row-cols-sm-2 row-cols-lg-5 align-items-stretch">
+      <div class="col">
+        <div class="card card-glass p-3 kpi h-100">
+          <div class="d-flex align-items-center gap-3">
+            <div class="icon bg-info-subtle text-info d-flex align-items-center justify-content-center rounded"><i class="bi bi-cash-coin"></i></div>
+            <div>
+              <div class="kpi-title text-secondary">Valor Serviço</div>
+              <div class="kpi-value"><?= money_br_compact($kpi_valor_servico) ?></div>
             </div>
           </div>
         </div>
@@ -650,6 +700,17 @@ $responsaveis = fetchPairs($pdo, 'SELECT DISTINCT u.id, u.nome FROM obra o LEFT 
       <div class="col">
         <div class="card card-glass p-3 kpi h-100">
           <div class="d-flex align-items-center gap-3">
+            <div class="icon bg-success-subtle text-success d-flex align-items-center justify-content-center rounded"><i class="bi bi-graph-up-arrow"></i></div>
+            <div>
+              <div class="kpi-title text-secondary">Valor Executado</div>
+              <div class="kpi-value"><?= money_br_compact($kpi_valor_executado) ?></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="card card-glass p-3 kpi h-100">
+          <div class="d-flex align-items-center gap-3">
             <div class="icon bg-success-subtle text-success d-flex align-items-center justify-content-center rounded"><i class="bi bi-check2-circle"></i></div>
             <div>
               <div class="kpi-title text-secondary">Executado Concluído</div>
@@ -661,22 +722,10 @@ $responsaveis = fetchPairs($pdo, 'SELECT DISTINCT u.id, u.nome FROM obra o LEFT 
       <div class="col">
         <div class="card card-glass p-3 kpi h-100">
           <div class="d-flex align-items-center gap-3">
-            <div class="icon bg-secondary-subtle text-secondary d-flex align-items-center justify-content-center rounded"><i class="bi bi-signpost"></i></div>
+            <div class="icon bg-danger-subtle text-danger d-flex align-items-center justify-content-center rounded"><i class="bi bi-exclamation-octagon"></i></div>
             <div>
-              <div class="kpi-title text-secondary">Postes (orçado)</div>
-              <div class="kpi-value"><?= number_format($kpi_postes_orc, 0, ',', '.') ?></div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="col">
-        <div class="card card-glass p-3 kpi h-100">
-          <div class="d-flex align-items-center gap-3">
-            <div class="icon bg-primary-subtle text-primary d-flex align-items-center justify-content-center rounded"><i class="bi bi-calendar2-check"></i></div>
-            <div>
-              <div class="kpi-title text-secondary">Conclusão no período</div>
-              <div class="kpi-value"><?= number_format($kpi_obras_prog_conc,0,',','.') ?> / <?= number_format($kpi_obras_concluidas,0,',','.') ?></div>
-              <div class="text-secondary small">Prog. conclusão / Concluídas</div>
+              <div class="kpi-title text-secondary">Executado sem prog. conclusão</div>
+              <div class="kpi-value"><?= money_br_compact($kpi_exec_sem_prog_conc) ?></div>
             </div>
           </div>
         </div>

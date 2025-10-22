@@ -105,6 +105,9 @@ $whereSql = implode(' AND ', $where);
 $kpi_qtd_obras = 0; $kpi_valor_medido = 0.0;
 $kpi_valor_executado_obras = 0.0;
 $kpi_tempo_medio_dias = null; // média de dias entre finalização e medição
+// Novos KPIs: Concluídas sem medição
+$kpi_conc_sem_med_qtd = 0; // quantidade de obras
+$kpi_conc_sem_med_exec = 0.0; // soma do executado dessas obras
 $series_diaria = []; // [data => valor]
 $series_diaria_obras = []; // [data => qtd obras]
 $por_usuario = []; // [usuario_nome => valor]
@@ -195,6 +198,45 @@ if (!$mustRequire && $canAnalyze) {
     $kpi_valor_executado_obras = (float)$stE->fetchColumn();
   }
 
+  // KPIs: Obras concluídas sem medição (sem filtro de data; respeita filial/tipo)
+  try {
+    // Monta filtros apenas por obra (filial/tipo)
+    $paramsOb = [];
+    $partsOb = ["1=1"]; 
+    if ($filiaisSel && $obraFilialCol) {
+      $inF = []; foreach ($filiaisSel as $i=>$v) { $k = ":of$i"; $inF[] = $k; $paramsOb[$k] = (int)$v; }
+      $partsOb[] = "o.$obraFilialCol IN (".implode(',', $inF).")";
+    }
+    if ($tipos && $obraTipoCol) {
+      $inT = []; foreach ($tipos as $i=>$v) { $k = ":ot$i"; $inT[] = $k; $paramsOb[$k] = (string)$v; }
+      $partsOb[] = "o.$obraTipoCol IN (".implode(',', $inT).")";
+    }
+    $whereOb = implode(' AND ', $partsOb);
+
+    // Subquery de executado por obra (histórico completo)
+    $execJoin = '';
+    if ($psObraCol && $psQtdCol && $psValorCol) {
+      $execStatus = $psStatusCol ? (" WHERE UPPER(COALESCE(ps.$psStatusCol,''))='EXECUTADO'") : '';
+      $execJoin = "LEFT JOIN (SELECT ps.$psObraCol AS obra, SUM(ps.$psQtdCol*ps.$psValorCol) AS valor FROM programacao_servico ps".$execStatus." GROUP BY ps.$psObraCol) ex ON ex.obra = o.id";
+    } else {
+      $execJoin = ""; // fallback: ex.valor será tratado como 0 com COALESCE
+    }
+
+    // KPI contagem e soma executado
+    $sqlSemMedKpi = "
+      SELECT COUNT(*) AS obras, COALESCE(SUM(COALESCE(ex.valor,0)),0) AS valor
+      FROM obra o
+      $execJoin
+      WHERE $whereOb
+        AND UPPER(COALESCE(o.situacao,'')) LIKE 'CONCLU%'
+        AND NOT EXISTS (SELECT 1 FROM fechamento_medicao fm WHERE fm.$fechMedObraCol = o.id)
+    ";
+    $stSS = $pdo->prepare($sqlSemMedKpi); $stSS->execute(filterParams($paramsOb, $sqlSemMedKpi));
+    $rSS = $stSS->fetch(PDO::FETCH_ASSOC) ?: ['obras'=>0,'valor'=>0];
+    $kpi_conc_sem_med_qtd = (int)$rSS['obras'];
+    $kpi_conc_sem_med_exec = (float)$rSS['valor'];
+  } catch (Throwable $e) { /* silenciar para não quebrar a página */ }
+
   // KPI: Tempo médio para medição (dias entre finalização e medição)
   if ($psObraCol && $psDataCol) {
     $statusCond = $psStatusCol ? (" UPPER(COALESCE(ps.".$psStatusCol.",''))='EXECUTADO' AND ") : '';
@@ -271,6 +313,42 @@ if (!$mustRequire && $canAnalyze) {
   $paramsList = $params; $paramsList[':ps_dini'] = $data_ini; $paramsList[':ps_dfim'] = $data_fim;
   $stL->execute(filterParams($paramsList, $sqlList));
   $medicoes = $stL->fetchAll(PDO::FETCH_ASSOC);
+
+  // Lista de Obras concluídas sem medição (colunas: Obra, Codigo, Descricao, Situação, Valor Orçado, Valor Executado)
+  $obras_sem_med = [];
+  try {
+    $paramsOb = [];
+    $partsOb = ["1=1"]; 
+    if ($filiaisSel && $obraFilialCol) {
+      $inF = []; foreach ($filiaisSel as $i=>$v) { $k = ":lf$i"; $inF[] = $k; $paramsOb[$k] = (int)$v; }
+      $partsOb[] = "o.$obraFilialCol IN (".implode(',', $inF).")";
+    }
+    if ($tipos && $obraTipoCol) {
+      $inT = []; foreach ($tipos as $i=>$v) { $k = ":lt$i"; $inT[] = $k; $paramsOb[$k] = (string)$v; }
+      $partsOb[] = "o.$obraTipoCol IN (".implode(',', $inT).")";
+    }
+    $whereOb = implode(' AND ', $partsOb);
+
+    $execJoin = '';
+    if ($psObraCol && $psQtdCol && $psValorCol) {
+      $execStatus = $psStatusCol ? (" WHERE UPPER(COALESCE(ps.$psStatusCol,''))='EXECUTADO'") : '';
+      $execJoin = "LEFT JOIN (SELECT ps.$psObraCol AS obra, SUM(ps.$psQtdCol*ps.$psValorCol) AS valor FROM programacao_servico ps".$execStatus." GROUP BY ps.$psObraCol) ex ON ex.obra = o.id";
+    }
+
+    $sqlSemMedLista = "
+      SELECT o.id AS obra_id, o.codigo, o.descricao, o.situacao,
+             COALESCE(o.valor_servico,0) AS valor_orcado,
+             COALESCE(ex.valor,0) AS valor_executado
+      FROM obra o
+      $execJoin
+      WHERE $whereOb
+        AND UPPER(COALESCE(o.situacao,'')) LIKE 'CONCLU%'
+        AND NOT EXISTS (SELECT 1 FROM fechamento_medicao fm WHERE fm.$fechMedObraCol = o.id)
+      ORDER BY o.codigo ASC, o.id ASC";
+    $stSML = $pdo->prepare($sqlSemMedLista);
+    $stSML->execute(filterParams($paramsOb, $sqlSemMedLista));
+    $obras_sem_med = $stSML->fetchAll(PDO::FETCH_ASSOC);
+  } catch (Throwable $e) { $obras_sem_med = []; }
 }
 
 // Opções de filtros
@@ -424,6 +502,32 @@ $tipos_opts = fetchPairs($pdo, 'SELECT DISTINCT tipo, tipo FROM obra WHERE tipo 
       </div>
     </div>
 
+    <!-- KPIs adicionais: Concluídas sem medição (abaixo da primeira linha de KPIs) -->
+    <div class="row g-3 mb-4 row-cols-1 row-cols-sm-2 row-cols-lg-5 align-items-stretch">
+      <div class="col">
+        <div class="card card-glass p-3 kpi h-100">
+          <div class="d-flex align-items-center gap-3">
+            <div class="icon bg-danger-subtle text-danger rounded d-flex align-items-center justify-content-center"><i class="bi bi-clipboard-x"></i></div>
+            <div>
+              <div class="kpi-title text-secondary">Obras concluídas sem medição</div>
+              <div class="kpi-value"><?= number_format($kpi_conc_sem_med_qtd, 0, ',', '.') ?></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="card card-glass p-3 kpi h-100">
+          <div class="d-flex align-items-center gap-3">
+            <div class="icon bg-warning-subtle text-warning rounded d-flex align-items-center justify-content-center"><i class="bi bi-cash"></i></div>
+            <div>
+              <div class="kpi-title text-secondary">Valor executado (concluídas s/ medição)</div>
+              <div class="kpi-value"><?= money_br_compact($kpi_conc_sem_med_exec) ?></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <?php if(!$mustRequire && $canAnalyze): ?>
     <div class="card card-glass p-3 mb-4">
       <h6 class="mb-3">Valor medido por dia</h6>
@@ -508,6 +612,36 @@ $tipos_opts = fetchPairs($pdo, 'SELECT DISTINCT tipo, tipo FROM obra WHERE tipo 
                 <td class="text-end"><?= number_format((float)$m['valor_medido'], 2, ',', '.') ?></td>
                 <td><?= $m['data_finalizacao'] ? date('d/m', strtotime($m['data_finalizacao'])) : '' ?></td>
                 <td class="text-end"><?= number_format((float)($m['valor_executado'] ?? 0), 2, ',', '.') ?></td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    
+    <div class="card card-glass p-3 mb-5">
+      <h6 class="mb-3">Obras concluídas sem medição</h6>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle">
+          <thead>
+            <tr>
+              <th>Obra</th>
+              <th>Código</th>
+              <th>Descrição</th>
+              <th>Situação</th>
+              <th class="text-end">Valor Orçado</th>
+              <th class="text-end">Valor Executado</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach (($obras_sem_med ?? []) as $r): ?>
+              <tr>
+                <td><?= (int)$r['obra_id'] ?></td>
+                <td><?= h($r['codigo']) ?></td>
+                <td><?= h($r['descricao']) ?></td>
+                <td><?= h($r['situacao']) ?></td>
+                <td class="text-end"><?= number_format((float)$r['valor_orcado'], 2, ',', '.') ?></td>
+                <td class="text-end"><?= number_format((float)$r['valor_executado'], 2, ',', '.') ?></td>
               </tr>
             <?php endforeach; ?>
           </tbody>
